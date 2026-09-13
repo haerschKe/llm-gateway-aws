@@ -26,11 +26,9 @@ def handler(event, context):
             modelId=model_id,
             messages=[{"role": "user", "content": [{"text": prompt}]}],
         )
-    except Exception:
-        print("FULL TRACEBACK:", flush=True)
-        traceback.print_exc(file=sys.stdout)
-        sys.stdout.flush()
-        raise
+    except Exception as e:
+        print(f"Bedrock call failed: {e}", flush=True)
+        return {"statusCode": 502, "body": json.dumps({"error": str(e)})}
 
     answer = response["output"]["message"]["content"][0]["text"]
     return {"statusCode": 200, "body": json.dumps({"answer": answer})}

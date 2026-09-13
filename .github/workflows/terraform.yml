@@ -1,0 +1,140 @@
+name: Terraform CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  AWS_ENDPOINT_URL: http://localhost:4566
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_DEFAULT_REGION: us-east-1
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      floci:
+        image: floci/floci:latest
+        ports: ["4566:4566"]
+        # GitHub-hosted runners are full VMs with a real Docker daemon, so
+        # mounting the host's Docker socket into the floci service container
+        # works the same way it does locally - this is what lets floci spin
+        # up real Lambda runtime containers even inside CI.
+        options: >-
+          -v /var/run/docker.sock:/var/run/docker.sock
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.14"
+
+      - name: Wait for floci to be healthy
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:4566/_localstack/health > /dev/null; then
+              echo "floci is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "floci did not become ready in time" >&2
+          exit 1
+
+      - name: Build Lambda packages
+        run: ./scripts/build-lambda.sh
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Terraform fmt check
+        run: terraform -chdir=terraform fmt -check
+
+      - name: Terraform init
+        run: terraform -chdir=terraform init
+
+      - name: Terraform validate
+        run: terraform -chdir=terraform validate
+
+      - name: Terraform plan
+        run: terraform -chdir=terraform plan
+
+      - name: Checkov Scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform
+          framework: terraform
+          soft_fail: true
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    needs: validate
+    services:
+      floci:
+        image: floci/floci:latest
+        ports: ["4566:4566"]
+        options: >-
+          -v /var/run/docker.sock:/var/run/docker.sock
+        env:
+          FLOCI_SERVICES_BEDROCK_RUNTIME_BACKEND: stub
+          # CI runs without Ollama, so we fall back to floci's built-in stub
+          # backend here - this test verifies the infrastructure wiring
+          # (API Gateway -> Lambda -> Bedrock call), not response quality.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.14"
+
+      - name: Wait for floci to be healthy
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:4566/_localstack/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+
+      - name: Build Lambda packages
+        run: ./scripts/build-lambda.sh
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Terraform apply
+        run: |
+          terraform -chdir=terraform init
+          terraform -chdir=terraform apply -auto-approve
+
+      - name: Seed test API key
+        run: |
+          aws dynamodb put-item \
+            --table-name llm-gateway-api-keys \
+            --item '{"apiKey": {"S": "demo-key-123"}, "rateLimitPerMinute": {"N": "5"}, "owner": {"S": "ci-smoke-test"}}'
+
+      - name: Smoke test - call the deployed endpoint
+        run: |
+          API_ID=$(terraform -chdir=terraform output -raw api_id)
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "http://localhost:4566/v1/chat" \
+            -H "Host: ${API_ID}.execute-api.us-east-1.amazonaws.com" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: demo-key-123" \
+            -d '{"prompt":"Sag Hallo"}')
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "Status: $HTTP_CODE"
+          echo "Body: $BODY"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Smoke test failed: expected 200, got $HTTP_CODE" >&2
+            exit 1
+          fi
+
+      - name: Terraform destroy
+        if: always()
+        run: terraform -chdir=terraform destroy -auto-approve

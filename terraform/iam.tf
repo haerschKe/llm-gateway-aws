@@ -30,3 +30,16 @@ resource "aws_iam_role_policy" "bedrock_access" {
   role   = aws_iam_role.gateway_lambda.id
   policy = data.aws_iam_policy_document.bedrock_invoke.json
 }
+
+data "aws_iam_policy_document" "request_log_write" {
+  statement {
+    actions   = ["dynamodb:PutItem"]
+    resources = [aws_dynamodb_table.request_log.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "request_log_access" {
+  name   = "dynamodb-request-log"
+  role   = aws_iam_role.gateway_lambda.id
+  policy = data.aws_iam_policy_document.request_log_write.json
+}

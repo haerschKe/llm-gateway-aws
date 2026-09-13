@@ -1,0 +1,15 @@
+services:
+  floci:
+    image: floci/floci:latest
+    ports:
+      - "4566:4566"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/app/data
+    environment:
+      - FLOCI_SERVICES_BEDROCK_RUNTIME_BACKEND=proxy
+      - FLOCI_SERVICES_BEDROCK_RUNTIME_PROXY_URL=http://host.docker.internal:11434/v1
+      - FLOCI_SERVICES_BEDROCK_RUNTIME_PROXY_DEFAULT_MODEL=qwen2.5:0.5b
+      - FLOCI_SERVICES_BEDROCK_RUNTIME_PROXY_MODEL_MAPPING=anthropic.claude-3-haiku-20240307-v1:0=qwen2.5:0.5b
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

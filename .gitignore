@@ -1,0 +1,57 @@
+# --- Terraform ---
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!example.tfvars
+crash.log
+crash.*.log
+.terraform.lock.hcl
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# --- Python / uv ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.python-version
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Lambda build artifacts (werden von scripts/build-lambda.sh erzeugt)
+lambda/build/
+lambda/gateway.zip
+lambda/requirements.txt
+
+# --- Docker / floci ---
+data/
+docker-compose.override.yml
+
+# --- Secrets / lokale Konfiguration ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Editor / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Sonstiges ---
+*.log
+/tmp/

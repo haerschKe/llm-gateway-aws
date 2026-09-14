@@ -29,7 +29,7 @@ __pycache__/
 lambda/build/
 lambda/build-authorizer/
 lambda/gateway.zip
-lambda/gateway-authorizer.zip
+lambda/authorizer.zip
 lambda/requirements.txt
 
 # --- Docker / floci ---

@@ -1,10 +1,12 @@
+import os
 import time
+
 import boto3
 
 dynamodb = boto3.client("dynamodb")
 
-API_KEYS_TABLE = "llm-gateway-api-keys"
-RATE_LIMITS_TABLE = "llm-gateway-rate-limits"
+API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "llm-gateway-api-keys")
+RATE_LIMITS_TABLE = os.environ.get("RATE_LIMITS_TABLE", "llm-gateway-rate-limits")
 
 
 def handler(event, context):
@@ -35,7 +37,7 @@ def handler(event, context):
         UpdateExpression="ADD requestCount :inc SET expiresAt = :ttl",
         ExpressionAttributeValues={
             ":inc": {"N": "1"},
-            ":ttl": {"N": str(int(time.time()) + 120)},  # 2 Minuten TTL-Puffer
+            ":ttl": {"N": str(int(time.time()) + 120)},  # 2-minute TTL buffer
         },
         ReturnValues="UPDATED_NEW",
     )

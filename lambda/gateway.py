@@ -1,18 +1,21 @@
-import json
-import sys
 import base64
 import hashlib
+import json
+import os
+import sys
 import time
-import uuid
 import traceback
+import uuid
+
 import boto3
 
 bedrock = boto3.client("bedrock-runtime")
 dynamodb = boto3.client("dynamodb")
 
-REQUEST_LOG_TABLE = "llm-gateway-requests"
-CACHE_TABLE = "llm-gateway-cache"
-CACHE_TTL_SECONDS = 3600  # 1 hour
+REQUEST_LOG_TABLE = os.environ.get("REQUEST_LOG_TABLE", "llm-gateway-requests")
+CACHE_TABLE = os.environ.get("CACHE_TABLE", "llm-gateway-cache")
+CACHE_TTL_SECONDS = int(os.environ.get("CACHE_TTL_SECONDS", "3600"))
+DEFAULT_MODEL_ID = os.environ.get("DEFAULT_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
 
 # Fictional prices for illustrating the concept - not real Bedrock prices.
 COST_PER_1K_INPUT_TOKENS = 0.00025
@@ -35,7 +38,7 @@ def handler(event, context):
 
     body = json.loads(raw_body)
     prompt = body.get("prompt", "")
-    model_id = body.get("modelId", "anthropic.claude-3-haiku-20240307-v1:0")
+    model_id = body.get("modelId", DEFAULT_MODEL_ID)
 
     # Prefer the API key from the context set by the authorizer (verified,
     # see Phase 3), falling back to the raw header - relevant e.g. if the
@@ -58,7 +61,7 @@ def handler(event, context):
         if "Item" in cached:
             print("Cache hit", flush=True)
             return {"statusCode": 200, "body": cached["Item"]["response"]["S"]}
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - deliberate: any cache failure must not break the response
         print(f"Cache lookup failed (non-fatal): {e}", flush=True)
 
     print("Cache miss", flush=True)
@@ -68,7 +71,7 @@ def handler(event, context):
             modelId=model_id,
             messages=[{"role": "user", "content": [{"text": prompt}]}],
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - deliberate: surface any Bedrock failure as a clean 502 instead of crashing
         print(f"Bedrock call failed: {e}", flush=True)
         traceback.print_exc(file=sys.stdout)
         return {"statusCode": 502, "body": json.dumps({"error": str(e)})}
@@ -97,7 +100,7 @@ def handler(event, context):
                 "estimatedCostUsd": {"S": f"{estimated_cost:.6f}"},
             },
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - deliberate: logging failures must never block a successful response
         print(f"Request logging failed (non-fatal): {e}", flush=True)
 
     response_body = json.dumps({"answer": answer})
@@ -111,7 +114,7 @@ def handler(event, context):
                 "expiresAt": {"N": str(int(time.time()) + CACHE_TTL_SECONDS)},
             },
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - deliberate: cache write failures must never block a successful response
         print(f"Cache write failed (non-fatal): {e}", flush=True)
 
     return {"statusCode": 200, "body": response_body}

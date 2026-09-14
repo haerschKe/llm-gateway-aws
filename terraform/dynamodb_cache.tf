@@ -1,5 +1,5 @@
 resource "aws_dynamodb_table" "response_cache" {
-  name         = "llm-gateway-cache"
+  name         = var.cache_table_name
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "promptHash"
 

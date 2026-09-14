@@ -12,8 +12,27 @@ env:
   AWS_DEFAULT_REGION: us-east-1
 
 jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.14"
+
+      - name: Install lambda dependencies (incl. dev)
+        run: cd lambda && uv sync
+
+      - name: Ruff lint
+        run: cd lambda && uv run ruff check .
+
+      - name: Unit tests (moto-mocked, no floci required)
+        run: cd lambda && uv run pytest -v
+
   validate:
     runs-on: ubuntu-latest
+    needs: lint-and-test
     services:
       floci:
         image: floci/floci:latest

@@ -96,6 +96,10 @@ curl -X POST "http://localhost:4566/v1/chat" \
 {"answer": "Hello! How can I help you today?"}
 ```
  
+![Example request and response](docs/example-request.svg)
+ 
+*Note: the image above is a static mockup, not a recorded terminal session — the fastest way to see it for real is to run the commands yourself. A recorded [asciinema](https://asciinema.org/) session or a `terminalizer` GIF would be a nice upgrade here if you want something more convincing than a mockup; not done yet.*
+ 
 ## Request logs & cost tracking
  
 Every successful call is logged to DynamoDB with tokens, latency, and an estimated cost (using fictional per-token pricing, since real Bedrock isn't involved locally):
@@ -147,28 +151,55 @@ Where exact-match caching *does* make sense: FAQ bots with a small fixed set of 
 llm-gateway-aws/
 ├── terraform/          # all infrastructure as code
 │   ├── providers.tf
+│   ├── variables.tf
 │   ├── iam.tf
 │   ├── lambda.tf
 │   ├── api_gateway.tf
 │   ├── auth.tf
-│   ├── dynamodb_auth.tf
 │   ├── dynamodb.tf
+│   ├── dynamodb_auth.tf
+│   ├── dynamodb_cache.tf
 │   └── outputs.tf
 ├── lambda/
 │   ├── gateway.py       # main request handler
 │   ├── authorizer.py    # API key + rate-limit authorizer
-│   └── pyproject.toml   # managed with uv, Python 3.14
+│   ├── pyproject.toml   # managed with uv, Python 3.14
+│   └── tests/
+│       ├── __init__.py       # makes pytest add lambda/ to sys.path automatically
+│       └── test_gateway.py   # moto-mocked unit tests, no floci required
 ├── scripts/
-│   ├── dev-up.sh        # starts floci + exports env vars
-│   └── build-lambda.sh  # packages both Lambda functions
+│   ├── dev-up.sh              # starts floci + exports env vars
+│   ├── build-lambda.sh        # packages both Lambda functions
+│   └── generate_dashboard.py  # static cost dashboard (Phase 6)
+├── docs/
+│   └── streaming-design-sketch.md
 ├── docker-compose.yml   # floci, configured for the Ollama proxy backend
+├── LICENSE
 └── .github/workflows/terraform.yml
 ```
  
+## Configuration
+ 
+All table names, timeouts, the default model ID, and rate-limit/throttling defaults live in [`terraform/variables.tf`](terraform/variables.tf) rather than being hardcoded across files — override them via a `terraform.tfvars` file or `-var` flags without touching the resource definitions themselves. The one exception is the `endpoints` block in `providers.tf`: that's local-development-only config and is meant to be deleted entirely (along with the placeholder credentials) when deploying against real AWS, rather than made conditional.
+ 
+## Testing
+ 
+Unit tests cover pure logic (cache key generation, Base64 body handling, error responses) using [`moto`](https://github.com/getmoto/moto) to mock AWS — no floci or Docker required:
+ 
+```bash
+cd lambda
+uv sync
+uv run ruff check .
+uv run pytest -v
+```
+ 
+These run automatically in CI on every push/PR, before the slower Terraform validation and smoke-test jobs. They deliberately don't cover the actual Bedrock/Ollama round trip — that's what the `curl`-based end-to-end tests throughout the tutorial (and the CI `smoke-test` job) are for.
+ 
 ## CI/CD
  
-Two jobs run on every pull request / push to `main`:
+Three jobs run on every pull request / push to `main`:
  
+- **`lint-and-test`** — `ruff check` and the `moto`-based unit tests above, fast and independent of floci
 - **`validate`** — `terraform fmt`, `validate`, `plan`, and a [Checkov](https://www.checkov.io/) security scan
 - **`smoke-test`** — a real `terraform apply` against floci in the CI runner (GitHub-hosted runners have a real Docker daemon, so floci's Lambda containers work the same way they do locally), a live end-to-end request, then `terraform destroy`
 ## Not implemented (by design)
@@ -183,3 +214,6 @@ A few non-obvious things that came up building this, documented here because the
 - **`print()` output can be lost** inside Lambda containers due to Python's stdout buffering — use `flush=True` and/or set `PYTHONUNBUFFERED=1`.
 - **HTTP API v2 Lambda authorizers return `403`, not `401`**, when `isAuthorized: false` — `401` only happens when the identity source header is missing entirely, so the authorizer is never invoked.
 - **floci's returned `invoke_url` looks like a real AWS domain** and doesn't resolve locally — the working approach is sending requests to `localhost:4566` with the real domain set as the `Host` header.
+## License
+ 
+MIT — see [LICENSE](LICENSE).

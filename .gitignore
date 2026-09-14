@@ -27,7 +27,9 @@ __pycache__/
 
 # Lambda build artifacts (werden von scripts/build-lambda.sh erzeugt)
 lambda/build/
+lambda/build-authorizer/
 lambda/gateway.zip
+lambda/authorizer.zip
 lambda/requirements.txt
 
 # --- Docker / floci ---

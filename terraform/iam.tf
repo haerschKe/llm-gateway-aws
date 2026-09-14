@@ -43,3 +43,16 @@ resource "aws_iam_role_policy" "request_log_access" {
   role   = aws_iam_role.gateway_lambda.id
   policy = data.aws_iam_policy_document.request_log_write.json
 }
+
+data "aws_iam_policy_document" "cache_access" {
+  statement {
+    actions   = ["dynamodb:GetItem", "dynamodb:PutItem"]
+    resources = [aws_dynamodb_table.response_cache.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "cache_dynamodb_access" {
+  name   = "dynamodb-cache"
+  role   = aws_iam_role.gateway_lambda.id
+  policy = data.aws_iam_policy_document.cache_access.json
+}

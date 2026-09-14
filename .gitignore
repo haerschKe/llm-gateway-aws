@@ -27,7 +27,7 @@ __pycache__/
 
 # Lambda build artifacts (werden von scripts/build-lambda.sh erzeugt)
 lambda/build/
-lamba/build-authorizer/
+lambda/build-authorizer/
 lambda/gateway.zip
 lambda/gateway-authorizer.zip
 lambda/requirements.txt
